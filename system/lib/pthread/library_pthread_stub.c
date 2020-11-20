@@ -3,6 +3,9 @@
 #include <semaphore.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <emscripten/stack.h>
+#include <emscripten/threading.h>
+#include <emscripten/emscripten.h>
 
 int emscripten_has_threading_support() { return 0; }
 
@@ -183,8 +186,8 @@ int pthread_detach(pthread_t t) {
   return 0;
 }
 
-int emscripten_main_browser_thread_id() {
-  return (int)pthread_self();
+pthread_t emscripten_main_browser_thread_id() {
+  return pthread_self();
 }
 
 // pthread_equal is defined as a macro in C, as a function for C++; undef it
@@ -255,6 +258,14 @@ int pthread_attr_destroy(pthread_attr_t *attr) {
 }
 
 int pthread_attr_getdetachstate(const pthread_attr_t *attr, int *detachstate) {
+  return 0;
+}
+
+int pthread_attr_getstack(const pthread_attr_t *attr, void **stackaddr, size_t *stacksize) {
+  /*FIXME: assumes that there is only one thread, and that attr is the
+    current thread*/
+  *stackaddr = (void*)emscripten_stack_get_base();
+  *stacksize = emscripten_stack_get_base() - emscripten_stack_get_end();
   return 0;
 }
 
@@ -371,3 +382,12 @@ int sem_destroy(sem_t *sem) {
 }
 
 void __wait(volatile int *addr, volatile int *waiters, int val, int priv) {}
+
+// When pthreads is not enabled, we can't use the Atomics futex api to do proper
+// sleeps, so simulate a busy spin wait loop instead.
+void emscripten_thread_sleep(double msecs) {
+  double start = emscripten_get_now();
+  while (emscripten_get_now() - start < msecs) {
+    // Do nothing.
+  }
+}
